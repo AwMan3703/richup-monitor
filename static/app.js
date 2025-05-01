@@ -107,8 +107,7 @@ function logMessage(roomId, rawMessage) {
     let payload = null;
 
     try {
-        const cleaned = rawMessage.replace(/^Received:\s*/, "");
-        const match = cleaned.match(/^[^,]+,(.*)/);
+        const match = rawMessage.match(/^[^,]+,(.*)/);
         if (match) {
             const parsed = JSON.parse(match[1]);
             if (Array.isArray(parsed) && parsed.length === 2) {
@@ -125,7 +124,6 @@ function logMessage(roomId, rawMessage) {
         : new Date().toLocaleTimeString();
 
     const messageElement = document.createElement("div");
-    // both the general "log-entry" class and a type-specific class
     messageElement.classList.add("log-entry", `type-${eventName}`);
     messageElement.innerHTML = `
         <span class="timestamp">${timestamp}</span>
@@ -133,23 +131,33 @@ function logMessage(roomId, rawMessage) {
         ${renderStyledJSON(payload || {})}
     `;
 
-    // Hide it immediately if its filter checkbox is currently unchecked
-    const filterCheckbox = document.querySelector(
-        `input.filter-checkbox[data-type="${eventName}"]`
-    );
+    // Hide if unchecked
+    const filterCheckbox = document.querySelector(`input.filter-checkbox[data-type="${eventName}"]`);
     if (filterCheckbox && !filterCheckbox.checked) {
         messageElement.style.display = "none";
+    }
+
+    // Special handling: room-deleted → add a button
+    if (eventName === "room-deleted") {
+        const button = document.createElement("button");
+        button.textContent = "Remove Log";
+        button.style.marginTop = "0.5rem";
+        button.onclick = () => {
+            const box = document.getElementById(`room-${roomId}`);
+            if (box) box.remove();
+        };
+        messageElement.appendChild(button);
     }
 
     rooms[roomId].appendChild(messageElement);
     rooms[roomId].scrollTop = rooms[roomId].scrollHeight;
 
-    // If this is a new event type, add a filter checkbox for it
     if (!messageTypes.has(eventName)) {
         messageTypes.add(eventName);
         createFilterCheckbox(eventName);
     }
 }
+
 
 // Set up WebSocket and start receiving messages
 const ws = new WebSocket(`ws://${location.host}/ws`);

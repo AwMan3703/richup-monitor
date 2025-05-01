@@ -14,6 +14,9 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
 clients = {}
+active_monitors = {}
+POLL_INTERVAL_SECONDS = 30
+
 
 def build_ws_url():
     return f"wss://richup.io/socket.io/?EIO=4&transport=websocket&t={int(time.time() * 1000)}"
@@ -37,11 +40,14 @@ async def respond_to_ping(msg, ws, tag):
         return True
     return False
 
+
 # ========= Room Monitor ==========
 class RoomMonitor:
     def __init__(self, room_id):
         self.room_id = room_id
         self.ws_url = build_ws_url()
+        self.task = None
+        self.alive = True
 
     async def notify_clients(self, message):
         try:
@@ -51,22 +57,43 @@ class RoomMonitor:
 
             event_type = payload[0]
             for client_ws, types in clients.items():
-                await client_ws.send_json({"room": self.room_id, "message": message, "eventType": event_type})
+                await client_ws.send_json({
+                    "room": self.room_id,
+                    "message": message,
+                    "eventType": event_type
+                })
+
+            if event_type == "room-deleted":
+                print(f"[-] Room deleted: {self.room_id}")
+                await self.shutdown()
+
         except Exception:
-            pass  # Ignore malformed messages
+            pass
 
     async def connect(self):
-        async with websockets.connect(self.ws_url) as ws:
-            await ws_recv(ws, f"room-{self.room_id}")
-            await ws_send(ws, f"room-{self.room_id}", "40/api/game,")
-            await asyncio.sleep(0.2)
+        try:
+            async with websockets.connect(self.ws_url) as ws:
+                await ws_recv(ws, f"room-{self.room_id}")
+                await ws_send(ws, f"room-{self.room_id}", "40/api/game,")
+                await asyncio.sleep(0.2)
+                await ws_send(ws, f"room-{self.room_id}", join_room_payload(self.room_id))
 
-            await ws_send(ws, f"room-{self.room_id}", join_room_payload(self.room_id))
+                while self.alive:
+                    msg = await ws_recv(ws, f"room-{self.room_id}")
+                    if await respond_to_ping(msg, ws, f"room-{self.room_id}"):
+                        continue
+                    await self.notify_clients(msg)
+        except Exception as e:
+            print(f"[!] Monitor error for {self.room_id}: {e}")
+        finally:
+            await self.shutdown()
 
-            while True:
-                msg = await ws_recv(ws, f"room-{self.room_id}")
-                if await respond_to_ping(msg, ws, f"room-{self.room_id}"): continue
-                await self.notify_clients(msg)
+    async def shutdown(self):
+        self.alive = False
+        if self.room_id in active_monitors:
+            del active_monitors[self.room_id]
+        print(f"[x] Stopped monitoring room {self.room_id}")
+
 
 # ====== Get Lobby Rooms ========
 async def get_lobby_room_ids():
@@ -84,10 +111,30 @@ async def get_lobby_room_ids():
                 rooms = get_json_body(msg)[1]["rooms"]
                 return [room["id"] for room in rooms]
 
+
+# ========== Periodic Polling ==========
+async def poll_new_rooms():
+    while True:
+        try:
+            room_ids = await get_lobby_room_ids()
+            for room_id in room_ids:
+                if room_id not in active_monitors:
+                    print(f"[+] Monitoring new room: {room_id}")
+                    monitor = RoomMonitor(room_id)
+                    task = asyncio.create_task(monitor.connect())
+                    monitor.task = task
+                    active_monitors[room_id] = monitor
+        except Exception as e:
+            print(f"[!] Error polling lobby: {e}")
+
+        await asyncio.sleep(POLL_INTERVAL_SECONDS)
+
+
 # ========== FastAPI Web Routes ==========
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
+
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -97,7 +144,6 @@ async def websocket_endpoint(websocket: WebSocket):
         init_data = await websocket.receive_text()
         init_json = json.loads(init_data)
         message_types = init_json.get("messageTypes", [])
-
         clients[websocket] = message_types
 
         while True:
@@ -106,13 +152,12 @@ async def websocket_endpoint(websocket: WebSocket):
     except WebSocketDisconnect:
         clients.pop(websocket, None)
 
+
 # ========== Background Runner ==========
 @app.on_event("startup")
 async def start_monitors():
-    room_ids = await get_lobby_room_ids()
-    for room_id in room_ids:
-        monitor = RoomMonitor(room_id)
-        asyncio.create_task(monitor.connect())
+    asyncio.create_task(poll_new_rooms())
+
 
 if __name__ == "__main__":
     port = 8000

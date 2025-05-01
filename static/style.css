@@ -68,6 +68,7 @@ body.dark-mode #darkModeToggle {
     font-weight: bold;
     background: #333;
     color: #eee;
+    z-index: 2;
 }
 
 body {
