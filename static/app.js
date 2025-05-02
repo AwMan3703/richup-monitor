@@ -15,13 +15,14 @@ const rooms = {};
 const messageTypes = new Set();
 
 // Create the room box on first message
-function createRoomBox(roomId) {
+function createRoomBox(roomId, timestamp) {
     const container = document.getElementById("roomsContainer");
     const box = document.createElement("div");
     box.className = "room-box";
     box.id = `room-${roomId}`;
 
     const title = document.createElement("div");
+    title.dataset.timestamp = timestamp
     title.className = "room-title";
     title.textContent = "Room ";
 
@@ -37,7 +38,7 @@ function createRoomBox(roomId) {
 
     box.appendChild(title);
     box.appendChild(log);
-    container.appendChild(box);
+    container.insertBefore(box, container.firstChild);
 
     rooms[roomId] = log;
 }
@@ -100,7 +101,7 @@ function renderStyledJSON(obj) {
 // Append a new message to the appropriate room log
 function logMessage(roomId, rawMessage) {
     if (!rooms[roomId]) {
-        createRoomBox(roomId);
+        createRoomBox(roomId, new Date().toLocaleString().split(", ")[1]);
     }
 
     let eventName = "unknown";

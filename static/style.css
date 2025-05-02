@@ -106,6 +106,12 @@ h1 {
     top: 0;
     z-index: 1;
 }
+.room-title::after {
+    content: "Tracking since " attr(data-timestamp);
+    display: block;
+    opacity: 0.2;
+    font-size: 0.8rem;
+}
 
 .room-log {
     padding: 0.5rem;
