@@ -18,12 +18,13 @@ const messageTypes = new Set();
 function createRoomBox(roomId, mapId, timestamp) {
     const container = document.getElementById("roomsContainer");
     const box = document.createElement("div");
-    box.className = "room-box";
+    box.classList.add("room-box");
+    box.classList.add("waiting");
     box.id = `room-${roomId}`;
 
     const title = document.createElement("div");
     title.dataset.timestamp = timestamp
-    title.className = "room-title";
+    title.classList.add("room-title");
     title.textContent = "Room ";
 
     const link = document.createElement("a");
@@ -144,8 +145,10 @@ function logMessage(room, rawMessage) {
         messageElement.style.display = "none";
     }
 
+    const box = document.getElementById(`room-${room.id}`);
+
     // Special handling
-    // room-deleted → add a button
+    // room-deleted -> add a button
     if (eventName === "room-deleted") {
         const button = document.createElement("button");
         button.textContent = "Remove Log";
@@ -156,9 +159,8 @@ function logMessage(room, rawMessage) {
         };
         messageElement.appendChild(button);
     }
-    // room map changed → change map name
+    // room map changed -> change map name
     else if (eventName === "game-room-updated" && !!payload?.map?.id) {
-        const box = document.getElementById(`room-${room.id}`);
         if (!box) return;
 
         const mapNameEl = box.querySelector(".room-map-name");
@@ -166,6 +168,17 @@ function logMessage(room, rawMessage) {
 
         mapNameEl.textContent = payload?.map?.id.replace("-", " ");
         mapNameEl.classList.toggle("is-relevant", ![undefined, "classic"].includes(payload?.map?.id))
+    }
+    // game-started/is playing, game-ended -> update border
+    else if (["game-started", "dice-rolled"].includes(eventName) || eventName.includes("trade")) {
+        box.classList.remove("waiting")
+        box.classList.add("playing")
+        box.classList.remove("ended")
+    }
+    else if (eventName === "game-ended") {
+        box.classList.remove("waiting")
+        box.classList.remove("playing")
+        box.classList.add("ended")
     }
 
     roomLogs[room.id].appendChild(messageElement);
