@@ -11,11 +11,11 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 // In-memory stores
-const rooms = {};
+const roomLogs = {};
 const messageTypes = new Set();
 
-// Create the room box on first message
-function createRoomBox(roomId, timestamp) {
+// Create the room box on the first message
+function createRoomBox(roomId, mapId, timestamp) {
     const container = document.getElementById("roomsContainer");
     const box = document.createElement("div");
     box.className = "room-box";
@@ -31,7 +31,13 @@ function createRoomBox(roomId, timestamp) {
     link.target = "_blank";
     link.textContent = roomId;
 
+    const mapName = document.createElement("div")
+    mapName.classList.add("room-map-name")
+    mapName.classList.toggle("is-relevant", ![undefined, "classic"].includes(mapId))
+    mapName.textContent = (mapId || "unknown").replace("-", " ")
+
     title.appendChild(link);
+    title.appendChild(mapName);
 
     const log = document.createElement("div");
     log.className = "room-log";
@@ -40,7 +46,7 @@ function createRoomBox(roomId, timestamp) {
     box.appendChild(log);
     container.insertBefore(box, container.firstChild);
 
-    rooms[roomId] = log;
+    roomLogs[roomId] = log;
 }
 
 // Create a checkbox to filter a given message type
@@ -99,9 +105,9 @@ function renderStyledJSON(obj) {
 }
 
 // Append a new message to the appropriate room log
-function logMessage(roomId, rawMessage) {
-    if (!rooms[roomId]) {
-        createRoomBox(roomId, new Date().toLocaleString().split(", ")[1]);
+function logMessage(room, rawMessage) {
+    if (!roomLogs[room.id]) {
+        createRoomBox(room.id, room.mapId, new Date().toLocaleString().split(", ")[1]);
     }
 
     let eventName = "unknown";
@@ -121,7 +127,7 @@ function logMessage(roomId, rawMessage) {
     }
 
     const timestamp = payload?.timestamp
-        ? new Date(payload.timestamp).toLocaleTimeString()
+        ? new Date(payload?.timestamp).toLocaleTimeString()
         : new Date().toLocaleTimeString();
 
     const messageElement = document.createElement("div");
@@ -138,20 +144,32 @@ function logMessage(roomId, rawMessage) {
         messageElement.style.display = "none";
     }
 
-    // Special handling: room-deleted → add a button
+    // Special handling
+    // room-deleted → add a button
     if (eventName === "room-deleted") {
         const button = document.createElement("button");
         button.textContent = "Remove Log";
         button.style.marginTop = "0.5rem";
         button.onclick = () => {
-            const box = document.getElementById(`room-${roomId}`);
+            const box = document.getElementById(`room-${room.id}`);
             if (box) box.remove();
         };
         messageElement.appendChild(button);
     }
+    // room map changed → change map name
+    else if (eventName === "game-room-updated" && !!payload?.map?.id) {
+        const box = document.getElementById(`room-${room.id}`);
+        if (!box) return;
 
-    rooms[roomId].appendChild(messageElement);
-    rooms[roomId].scrollTop = rooms[roomId].scrollHeight;
+        const mapNameEl = box.querySelector(".room-map-name");
+        if (!mapNameEl) return;
+
+        mapNameEl.textContent = payload?.map?.id.replace("-", " ");
+        mapNameEl.classList.toggle("is-relevant", ![undefined, "classic"].includes(payload?.map?.id))
+    }
+
+    roomLogs[room.id].appendChild(messageElement);
+    roomLogs[room.id].scrollTop = roomLogs[room.id].scrollHeight;
 
     if (!messageTypes.has(eventName)) {
         messageTypes.add(eventName);

@@ -8,9 +8,12 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 import uvicorn
+import os
 
 app = FastAPI()
-app.mount("/static", StaticFiles(directory="static"), name="static")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
+
 templates = Jinja2Templates(directory="templates")
 
 clients = {}
@@ -43,8 +46,9 @@ async def respond_to_ping(msg, ws, tag):
 
 # ========= Room Monitor ==========
 class RoomMonitor:
-    def __init__(self, room_id):
-        self.room_id = room_id
+    def __init__(self, room):
+        self.room_id = room["id"]
+        self.room_data = room
         self.ws_url = build_ws_url()
         self.task = None
         self.alive = True
@@ -58,7 +62,7 @@ class RoomMonitor:
             event_type = payload[0]
             for client_ws, types in clients.items():
                 await client_ws.send_json({
-                    "room": self.room_id,
+                    "room": self.room_data,
                     "message": message,
                     "eventType": event_type
                 })
@@ -92,11 +96,11 @@ class RoomMonitor:
         self.alive = False
         if self.room_id in active_monitors:
             del active_monitors[self.room_id]
-        print(f"[x] Stopped monitoring room {self.room_id}")
+        print(f"[✕] Stopped monitoring room {self.room_id}")
 
 
 # ====== Get Lobby Rooms ========
-async def get_lobby_room_ids():
+async def get_lobby_rooms():
     ws_url = build_ws_url()
     async with websockets.connect(ws_url) as ws:
         await ws_recv(ws, "lobby")
@@ -109,18 +113,19 @@ async def get_lobby_room_ids():
                 continue
             if msg.startswith("42/api/lobby,[\"lobby-rooms-list\""):
                 rooms = get_json_body(msg)[1]["rooms"]
-                return [room["id"] for room in rooms]
+                return rooms
 
 
 # ========== Periodic Polling ==========
 async def poll_new_rooms():
     while True:
         try:
-            room_ids = await get_lobby_room_ids()
-            for room_id in room_ids:
+            rooms = await get_lobby_rooms()
+            for room in rooms:
+                room_id = room["id"]
                 if room_id not in active_monitors:
                     print(f"[+] Monitoring new room: {room_id}")
-                    monitor = RoomMonitor(room_id)
+                    monitor = RoomMonitor(room)
                     task = asyncio.create_task(monitor.connect())
                     monitor.task = task
                     active_monitors[room_id] = monitor

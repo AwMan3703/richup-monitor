@@ -113,6 +113,19 @@ h1 {
     font-size: 0.8rem;
 }
 
+.room-map-name {
+    display: block;
+    text-transform: capitalize;
+    opacity: 0.5;
+    font-size: 0.8rem;
+}
+.room-map-name::before {
+    content: "Map: ";
+}
+.room-map-name:not(.is-relevant) {
+    display: none;
+}
+
 .room-log {
     padding: 0.5rem;
     overflow-y: auto;
