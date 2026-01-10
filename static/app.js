@@ -14,6 +14,10 @@ document.addEventListener("DOMContentLoaded", () => {
 const roomLogs = {};
 const messageTypes = new Set();
 
+function containsAnySubstring(string, substrings) {
+    return substrings.some(substring => string.includes(substring));
+}
+
 // Create the room box on the first message
 function createRoomBox(roomId, mapId, timestamp) {
     const container = document.getElementById("roomsContainer");
@@ -170,7 +174,7 @@ function logMessage(room, rawMessage) {
         mapNameEl.classList.toggle("is-relevant", ![undefined, "classic"].includes(payload?.map?.id))
     }
     // game-started/is playing, game-ended -> update border
-    else if (["game-started", "dice-rolled"].includes(eventName) || eventName.includes("trade")) {
+    else if (containsAnySubstring(eventName, ["game-started", "dice-rolled", "trade", "purchase", "auction"])) {
         box.classList.remove("waiting")
         box.classList.add("playing")
         box.classList.remove("ended")
